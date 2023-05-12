@@ -1,0 +1,9 @@
+{
+    "cmake.configureOnOpen": true,
+    "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 4, ColumnLimit: 0 }",
+    "C_Cpp.errorSquiggles": "disabled",
+    "files.associations": {
+        "gpu.h": "c",
+        "glfw3.h": "c"
+    }
+}
