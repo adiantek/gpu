@@ -1,4 +1,6 @@
 #include <Controller.hpp>
+#include <Logger.h>
+#include <main.h>
 
 Controller *controller = nullptr;
 
@@ -6,6 +8,14 @@ Controller::Controller(GLFWwindow *window) {
     controller = this;
 
     this->window = window;
+
+    for (int i = 0; i < GLFW_KEY_LAST; i++) {
+        this->keys[i] = false;
+    }
+    for (int i = 0; i < GLFW_MOUSE_BUTTON_LAST; i++) {
+        this->mouseButtons[i] = false;
+    }
+    glfwGetWindowSize(window, &this->width, &this->height);
 
     glfwSetWindowSizeCallback(window, onWindowSizeChange);
     glfwSetKeyCallback(window, onKeyPress);
@@ -25,6 +35,8 @@ void Controller::onWindowSizeChange(GLFWwindow *window, int width, int height) {
     }
     controller->width = width;
     controller->height = height;
+
+    resizeRenderBuffer(width, height);
 }
 void Controller::onKeyPress(GLFWwindow *window, int key, int scancode, int action, int mode) {
     if (key >= GLFW_KEY_LAST) {
