@@ -41,14 +41,14 @@ void createRenderBuffer(GLuint *renderBuffer, int width, int height) {
     checkCudaErrors(cudaGraphicsMapResources(1, &cudaResource, 0));
     checkCudaErrors(cudaGraphicsSubResourceGetMappedArray(&cudaResourceArr, cudaResource, 0, 0));
 
-    cudaMalloc(&cudaResourcePtr, width * height * 4);
+    checkCudaErrors(cudaMalloc(&cudaResourcePtr, width * height * 4));
     cudaInit<<<1, 1>>>(cudaResourcePtr, width, height);
 }
 
 void resizeRenderBuffer(int width, int height) {
-    cudaFree(cudaResourcePtr);
-    cudaGraphicsUnmapResources(1, &cudaResource, 0);
-    cudaGraphicsUnregisterResource(cudaResource);
+    checkCudaErrors(cudaFree(cudaResourcePtr));
+    checkCudaErrors(cudaGraphicsUnmapResources(1, &cudaResource, 0));
+    checkCudaErrors(cudaGraphicsUnregisterResource(cudaResource));
     glDeleteRenderbuffers(1, &renderBuffer);
     glDeleteFramebuffers(1, &frameBuffer);
     createRenderBuffer(&renderBuffer, width, height);
