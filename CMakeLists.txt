@@ -14,9 +14,5 @@ add_compile_definitions(GLM_FORCE_CUDA)
 add_compile_definitions(GL_GLEXT_PROTOTYPES)
 
 find_package(glfw3 3.3 REQUIRED)
-find_package(OpenGL REQUIRED)
-find_package(glm REQUIRED)
 
 target_link_libraries(${PROJECT_NAME} "glfw")
-target_link_libraries(${PROJECT_NAME} "OpenGL::GL")
-target_link_libraries(${PROJECT_NAME} "glm::glm")
