@@ -7,12 +7,12 @@
 #include <device_launch_parameters.h>
 #include <driver_types.h>
 #include <helper_cuda.h>
+#include <helper_math.h>
 #include <imgui/imgui_single_file.h>
 #include <main.h>
-#include <fluids.cuh>
-#include <helper_math.h>
 
 #include <Controller.hpp>
+#include <fluids.cuh>
 
 GLuint frameBuffer;
 GLuint renderBuffer;
@@ -34,7 +34,7 @@ void createRenderBuffer(GLuint *renderBuffer, int width, int height) {
     glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
     glGenRenderbuffers(1, renderBuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, *renderBuffer);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width * 2, height * 2);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, *renderBuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -43,8 +43,8 @@ void createRenderBuffer(GLuint *renderBuffer, int width, int height) {
     checkCudaErrors(cudaGraphicsMapResources(1, &cudaResource, 0));
     checkCudaErrors(cudaGraphicsSubResourceGetMappedArray(&cudaResourceArr, cudaResource, 0, 0));
 
-    checkCudaErrors(cudaMalloc(&cudaResourcePtr, width * height * 4));
-    cudaInit<<<1, 1>>>(cudaResourcePtr, width, height);
+    checkCudaErrors(cudaMalloc(&cudaResourcePtr, width * 2 * height * 2 * 4));
+    cudaInit<<<1, 1>>>(cudaResourcePtr, width * 2, height * 2);
     setup_fluids(width, height);
 }
 
@@ -76,7 +76,7 @@ __global__ void cudaDraw(uint8_t *ptr, int mouseX, int mouseY, int w, int h) {
     int dy = y - (h - mouseY);
     int d = dx * dx + dy * dy;
     if (d < 255 * 8) {
-        uint8_t val = (uint8_t) (255 - d / 8);
+        uint8_t val = (uint8_t)(255 - d / 8);
         int index = (y * w + x) * 4 + 1;
         if (ptr[index] < val) {
             ptr[index] = val;
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    GLFWwindow *window = glfwCreateWindow(512, 512, "Lubię trójkąty", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(1028, 1028, "Lubię trójkąty", NULL, NULL);
     if (!window) {
         LOGE("Failed to create window.");
         glfwTerminate();
@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
 
         int w = controller->width;
         int h = controller->height;
-        
+
         currTime = glfwGetTime();
         update_fluids(controller, currTime - prevTime);
         prevTime = currTime;
@@ -150,15 +150,15 @@ int main(int argc, char **argv) {
         // cudaMemcpy(cudaResourcePtr, cudaClearPtr, 1280 * 720 * 4, cudaMemcpyDeviceToDevice);
         dim3 gridDim((w + 31) / 32, (h + 31) / 32);
         dim3 blockDim(32, 32);
-        float3_to_uint8<<<gridDim, blockDim>>>(cudaResourcePtr, h_dye[0], h_dye_pitch[0], w, h);
+        float3_to_uint8<<<gridDim, blockDim>>>(cudaResourcePtr, w, h);
         if (controller->mouseButtons[GLFW_MOUSE_BUTTON_LEFT]) {
-            cudaDraw<<<gridDim, blockDim>>>(cudaResourcePtr, floor(controller->mouseX), floor(controller->mouseY), w, h);
+            // cudaDraw<<<gridDim, blockDim>>>(cudaResourcePtr, floor(controller->mouseX), floor(controller->mouseY), w, h);
         }
-        cudaMemcpy2DToArray(cudaResourceArr, 0, 0, cudaResourcePtr, w * 4, w * 4, h, cudaMemcpyDeviceToDevice);
+        cudaMemcpy2DToArray(cudaResourceArr, 0, 0, cudaResourcePtr, w * 4 * 2, w * 4 * 2, h * 2, cudaMemcpyDeviceToDevice);
 
         glBindFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBlitFramebuffer(0, 0, w * 2, h * 2, 0, 0, w * 2, h * 2, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

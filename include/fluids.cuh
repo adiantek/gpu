@@ -56,10 +56,10 @@ __global__ void advect_kernel(T *result, size_t result_pitch,
  * @param height array height
  */
 template <typename T>
-void jacobi_float2_kernel(T *result, size_t result_pitch,
-                          T *x, size_t x_pitch,
-                          T *b, size_t b_pitch,
-                          float alpha, float rBeta, int width, int height);
+__global__ void jacobi_kernel(T *result, size_t result_pitch,
+                              T *x, size_t x_pitch,
+                              T *b, size_t b_pitch,
+                              float alpha, float rBeta, int width, int height);
 
 // divergence.fs
 
@@ -78,7 +78,12 @@ __global__ void divergence_kernel(float *result, size_t result_pitch,
                                   float2 *w, size_t w_pitch,
                                   int width, int height);
 
-__global__ void float3_to_uint8(uint8_t *result, float3 *input, size_t pitch, int width, int height);
+__global__ void apply_force_kernel(float2 *result, size_t result_pitch,
+                                   float2 *u, size_t u_pitch,
+                                   float radius, float2 point, float2 F,
+                                   int width, int height);
+
+__global__ void float3_to_uint8(uint8_t *result, int width, int height);
 
 void free_fluids();
 void setup_fluids(int width, int height);
