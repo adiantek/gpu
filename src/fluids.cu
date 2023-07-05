@@ -457,8 +457,8 @@ void computePressure(Controller *controller) {
     dim3 gridDim((width + 31) / 32, (height + 31) / 32);
     dim3 blockDim(32, 32);
 
-    // cudaMemset2D(h_pressure[0], h_pressure_pitch[0], 0, width * sizeof(float), height);
-    // cudaMemset2D(h_pressure[1], h_pressure_pitch[1], 0, width * sizeof(float), height);
+    cudaMemset2D(h_pressure[0], h_pressure_pitch[0], 0, width * sizeof(float), height);
+    cudaMemset2D(h_pressure[1], h_pressure_pitch[1], 0, width * sizeof(float), height);
 
     for (int i = 0; i < 70; i++) {
         boundary_advect_kernel<float><<<gridDim, blockDim>>>(
