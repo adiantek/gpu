@@ -37,10 +37,10 @@ __global__ void boundary_advect_kernel(T *result, size_t result_pitch,
  */
 template <typename T>
 __global__ void advect_kernel(T *result, size_t result_pitch,
-                       float timestep, float rdx,
-                       T *x, size_t x_pitch,
-                       float2 *u, size_t u_pitch,
-                       int width, int height);
+                              float timestep, float rdx,
+                              T *x, size_t x_pitch,
+                              float2 *u, size_t u_pitch,
+                              int width, int height);
 
 // solve_jacobi.fs
 
@@ -68,13 +68,15 @@ void jacobi_float2_kernel(T *result, size_t result_pitch,
  *
  * @param result divergence
  * @param halfrdx 0.5 / gridscale
- * @param wX vector field (x component)
- * @param wY vector field (y component)
+ * @param w vector field
  * @param width array width
  * @param height array height
  * @return __global__
  */
-__global__ void divergence(float **result, float halfrdx, float **wX, float **wY, int width, int height);
+__global__ void divergence_kernel(float *result, size_t result_pitch,
+                                  float halfrdx,
+                                  float2 *w, size_t w_pitch,
+                                  int width, int height);
 
 __global__ void float3_to_uint8(uint8_t *result, float3 *input, size_t pitch, int width, int height);
 

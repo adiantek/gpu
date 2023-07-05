@@ -64,15 +64,15 @@ __global__ void boundary_advect_kernel(T *result, size_t result_pitch,
  */
 template <typename T>
 __global__ void advect_kernel(T *result, size_t result_pitch,
-                       float timestep, float rdx,
-                       T *x, size_t x_pitch,
-                       float2 *u, size_t u_pitch,
-                       int width, int height) {
+                              float timestep, float rdx,
+                              T *x, size_t x_pitch,
+                              float2 *u, size_t u_pitch,
+                              int width, int height) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i >= width || j >= height) return;
-    if (i == 0 || j == 0 || i == width - 1 || j == height -1) {
+    if (i == 0 || j == 0 || i == width - 1 || j == height - 1) {
         result[j * result_pitch / sizeof(T) + i] = x[j * x_pitch / sizeof(T) + i];
         return;
     }
@@ -152,21 +152,27 @@ __global__ void jacobi_kernel(T *result, size_t result_pitch,
  * @param height array height
  * @return __global__
  */
-__global__ void divergence(float **result, float halfrdx, float **wX, float **wY, int width, int height) {
+__global__ void divergence_kernel(float *result, size_t result_pitch,
+                                  float halfrdx,
+                                  float2 *w, size_t w_pitch,
+                                  int width, int height) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i >= width || j >= height) return;
-    if (i == 0 || j == 0) return;
+    if (i == 0 || j == 0 || i == width - 1 || j == height - 1) {
+        result[j * result_pitch / sizeof(float) + i] = w[j * w_pitch / sizeof(float2) + i].x;
+        return;
+    }
 
-    float wL = wX[j][i - 1];
-    float wR = wX[j][i + 1];
-    float wB = wY[j - 1][i];
-    float wT = wY[j + 1][i];
+    float wL = w[j * w_pitch / sizeof(float2) + i - 1].x;
+    float wR = w[j * w_pitch / sizeof(float2) + i + 1].x;
+    float wB = w[(j - 1) * w_pitch / sizeof(float2) + i].y;
+    float wT = w[(j + 1) * w_pitch / sizeof(float2) + i].y;
 
     float div = halfrdx * ((wR - wL) + (wT - wB));
 
-    result[j][i] = div;
+    result[j * result_pitch / sizeof(float) + i] = div;
 }
 
 __global__ void float3_to_uint8(uint8_t *result, float3 *input, size_t pitch, int width, int height) {
@@ -314,7 +320,17 @@ void diffuse_velocity(Controller *controller, double timestep) {
     }
 }
 
-void divergence() {
+void divergence(Controller *controller) {
+    int width = controller->width;
+    int height = controller->height;
+    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
+    dim3 blockDim(32, 32);
+    float halfrdx = 0.5f / width;
+    divergence_kernel<<<gridDim, blockDim>>>(
+        h_divergence, h_divergence_pitch,
+        halfrdx,
+        h_velocity[0], h_velocity_pitch[0],
+        width, height);
 }
 
 void computePressure() {
@@ -335,7 +351,7 @@ void update_fluids(Controller *controller, double timestep) {
 
     diffuse_velocity(controller, timestep);
 
-    divergence();
+    divergence(controller);
     computePressure();
     gradientSubtraction();
 }
