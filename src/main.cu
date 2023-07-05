@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
         int h = controller->height;
         
         currTime = glfwGetTime();
-        update_fluids(currTime - prevTime, controller);
+        update_fluids(controller, currTime - prevTime);
         prevTime = currTime;
 
         // cudaMemcpy(cudaResourcePtr, cudaClearPtr, 1280 * 720 * 4, cudaMemcpyDeviceToDevice);

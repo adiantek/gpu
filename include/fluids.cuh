@@ -48,7 +48,14 @@ __global__ void advect(float **result, float timestep, float rdx, float **x, flo
  * @param width array width
  * @param height array height
  */
-__global__ void jacobi(float **result, float **x, float **b, float alpha, float rBeta, int width, int height);
+__global__ void jacobi_float3_kernel(float3 *result, size_t result_pitch,
+    float3 *x, size_t x_pitch,
+    float3 *b, size_t b_pitch,
+    float alpha, float rBeta, int width, int height);
+__global__ void jacobi_float_kernel(float *result, size_t result_pitch,
+    float *x, size_t x_pitch,
+    float *b, size_t b_pitch,
+    float alpha, float rBeta, int width, int height);
 
 // divergence.fs
 
@@ -69,4 +76,4 @@ __global__ void float3_to_uint8(uint8_t *result, float3 *input, size_t pitch, in
 
 void free_fluids();
 void setup_fluids(int width, int height);
-void update_fluids(double timestep, Controller *controller);
+void update_fluids(Controller *controller, double timestep);

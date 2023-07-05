@@ -103,26 +103,63 @@ __global__ void advect(float **result, float timestep, float rdx, float **x, flo
  * @param width array width
  * @param height array height
  */
-__global__ void jacobi(float **result, float **x, float **b, float alpha, float rBeta, int width, int height) {
+__global__ void jacobi_float3_kernel(float3 *result, size_t result_pitch,
+    float3 *x, size_t x_pitch,
+    float3 *b, size_t b_pitch,
+    float alpha, float rBeta, int width, int height) {
+    
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i >= width || j >= height) return;
-    if (i == 0 || j == 0) return;
+
+    if (i == 0 || j == 0 || i == width - 1 || j == height - 1) {
+        result[j * result_pitch / sizeof(float3) + i] = x[j * x_pitch / sizeof(float3) + i];
+        return;
+    }
 
     // left, right, bottom, and top x samples
-    float xL = x[j][i - 1];
-    float xR = x[j][i + 1];
-    float xB = x[j - 1][i];
-    float xT = x[j + 1][i];
+    float3 xL = x[j * x_pitch / sizeof(float3) + i - 1];
+    float3 xR = x[j * x_pitch / sizeof(float3) + i + 1];
+    float3 xB = x[(j - 1) * x_pitch / sizeof(float3) + i];
+    float3 xT = x[(j + 1) * x_pitch / sizeof(float3) + i];
 
     // b sample, from center
-    float bC = b[j][i];
+    float3 bC = b[j * b_pitch / sizeof(float3) + i];
+
+    // evaluate Jacobi iteration
+    float3 xNew = (xL + xR + xB + xT + alpha * bC) * rBeta;
+
+    result[j * result_pitch / sizeof(float3) + i] = xNew;
+}
+__global__ void jacobi_float_kernel(float *result, size_t result_pitch,
+    float *x, size_t x_pitch,
+    float *b, size_t b_pitch,
+    float alpha, float rBeta, int width, int height) {
+    
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= width || j >= height) return;
+
+    if (i == 0 || j == 0 || i == width - 1 || j == height - 1) {
+        result[j * result_pitch / sizeof(float) + i] = x[j * x_pitch / sizeof(float) + i];
+        return;
+    }
+
+    // left, right, bottom, and top x samples
+    float xL = x[j * x_pitch / sizeof(float) + i - 1];
+    float xR = x[j * x_pitch / sizeof(float) + i + 1];
+    float xB = x[(j - 1) * x_pitch / sizeof(float) + i];
+    float xT = x[(j + 1) * x_pitch / sizeof(float) + i];
+
+    // b sample, from center
+    float bC = b[j * b_pitch / sizeof(float) + i];
 
     // evaluate Jacobi iteration
     float xNew = (xL + xR + xB + xT + alpha * bC) * rBeta;
 
-    result[j][i] = xNew;
+    result[j * result_pitch / sizeof(float) + i] = xNew;
 }
 
 
@@ -238,9 +275,65 @@ void advect_dye(double timestep) {
     
 }
 
-void update_fluids(double timestep, Controller *controller) {
+void apply_force(Controller *controller) {
+
+}
+
+void diffuse_velocity(Controller *controller, double timestep) {
+    int width = controller->width;
+    int height = controller->height;
+    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
+    dim3 blockDim(32, 32);
+    const float m_viscosity = 0.0001f;
+    float alpha = (2.0f / width) * (2.0f / height) / (m_viscosity * timestep);
+    float rBeta = 1.0f / (4 + alpha);
+    for (int i = 0; i < 15; i++) {
+        jacobi_float3_kernel<<<gridDim, blockDim>>>(
+            h_velocity[0], h_velocity_pitch[0],
+            h_velocity[1], h_velocity_pitch[1],
+            h_velocity[1], h_velocity_pitch[1],
+            alpha, rBeta,
+            width, height);
+        jacobi_float3_kernel<<<gridDim, blockDim>>>(
+            h_velocity[0], h_velocity_pitch[0],
+            h_velocity[1], h_velocity_pitch[1],
+            h_velocity[1], h_velocity_pitch[1],
+            alpha, rBeta,
+            width, height);
+    }
+    jacobi_float3_kernel<<<gridDim, blockDim>>>(
+        h_velocity[0], h_velocity_pitch[0],
+        h_velocity[1], h_velocity_pitch[1],
+        h_velocity[1], h_velocity_pitch[1],
+        alpha, rBeta,
+        width, height);
+}
+
+void divergence() {
+
+}
+
+void computePressure() {
+
+}
+
+void gradientSubtraction() {
+
+}
+
+void update_fluids(Controller *controller, double timestep) {
     timestep = 0.1;
 
     advect_velocity(timestep);
-    advect_dye(timestamp);
+    advect_dye(timestep);
+
+    if (controller->mouseButtons[GLFW_MOUSE_BUTTON_LEFT]) {
+        apply_force(controller);
+    }
+
+    diffuse_velocity(controller, timestep);
+
+    divergence();
+	computePressure();
+	gradientSubtraction();
 }
