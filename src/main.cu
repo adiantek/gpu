@@ -9,6 +9,8 @@
 #include <helper_cuda.h>
 #include <imgui/imgui_single_file.h>
 #include <main.h>
+#include <fluids.cuh>
+#include <helper_math.h>
 
 #include <Controller.hpp>
 
@@ -43,6 +45,7 @@ void createRenderBuffer(GLuint *renderBuffer, int width, int height) {
 
     checkCudaErrors(cudaMalloc(&cudaResourcePtr, width * height * 4));
     cudaInit<<<1, 1>>>(cudaResourcePtr, width, height);
+    setup_fluids(width, height);
 }
 
 void resizeRenderBuffer(int width, int height) {
@@ -51,6 +54,7 @@ void resizeRenderBuffer(int width, int height) {
     checkCudaErrors(cudaGraphicsUnregisterResource(cudaResource));
     glDeleteRenderbuffers(1, &renderBuffer);
     glDeleteFramebuffers(1, &frameBuffer);
+    free_fluids();
     createRenderBuffer(&renderBuffer, width, height);
 }
 
@@ -91,7 +95,7 @@ int main(int argc, char **argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    GLFWwindow *window = glfwCreateWindow(1280, 720, "Lubię trójkąty", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(512, 512, "Lubię trójkąty", NULL, NULL);
     if (!window) {
         LOGE("Failed to create window.");
         glfwTerminate();
@@ -122,10 +126,14 @@ int main(int argc, char **argv) {
 
     // bool show_demo_window = true;
 
+    double currTime = glfwGetTime();
+    double prevTime = currTime;
+
     createRenderBuffer(&renderBuffer, controller->width, controller->height);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -134,9 +142,15 @@ int main(int argc, char **argv) {
 
         int w = controller->width;
         int h = controller->height;
+        
+        currTime = glfwGetTime();
+        update_fluids(currTime - prevTime, controller);
+        prevTime = currTime;
+
         // cudaMemcpy(cudaResourcePtr, cudaClearPtr, 1280 * 720 * 4, cudaMemcpyDeviceToDevice);
         dim3 gridDim((w + 31) / 32, (h + 31) / 32);
         dim3 blockDim(32, 32);
+        float3_to_uint8<<<gridDim, blockDim>>>(cudaResourcePtr, h_dye[0], h_dye_pitch[0], w, h);
         if (controller->mouseButtons[GLFW_MOUSE_BUTTON_LEFT]) {
             cudaDraw<<<gridDim, blockDim>>>(cudaResourcePtr, floor(controller->mouseX), floor(controller->mouseY), w, h);
         }

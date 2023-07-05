@@ -59,6 +59,8 @@ void Controller::onMouseButtonPress(GLFWwindow *window, int button, int action, 
     }
 }
 void Controller::onCursorPositionChange(GLFWwindow *window, double xPos, double yPos) {
+    controller->deltaX = xPos - controller->mouseX;
+    controller->deltaY = yPos - controller->mouseY;
     controller->mouseX = xPos;
     controller->mouseY = yPos;
 }

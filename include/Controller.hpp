@@ -13,6 +13,8 @@ class Controller {
     GLFWwindow *window;
     int width;
     int height;
+    double deltaX;
+    double deltaY;
     double mouseX;
     double mouseY;
     
