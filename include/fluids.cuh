@@ -16,13 +16,6 @@ extern size_t h_divergence_pitch;
 extern float3 *h_dye[2];
 extern size_t h_dye_pitch[2];
 
-template <typename T>
-__global__ void boundary_advect_kernel(T *result, size_t result_pitch,
-                                       T *field, size_t field_pitch,
-                                       float scale, int width, int height);
-
-// interior_advect.fs
-
 /**
  * @brief Advection Fragment Program
  *
@@ -37,12 +30,10 @@ __global__ void boundary_advect_kernel(T *result, size_t result_pitch,
  */
 template <typename T>
 __global__ void advect_kernel(T *result, size_t result_pitch,
-                              float timestep, float rdx,
+                              float dt, float dissipation,
                               T *x, size_t x_pitch,
                               float2 *u, size_t u_pitch,
                               int width, int height);
-
-// solve_jacobi.fs
 
 /**
  * @brief The Jacobi Iteration Fragment Program Used to Solve Poisson Equations
@@ -61,8 +52,6 @@ __global__ void jacobi_kernel(T *result, size_t result_pitch,
                               T *b, size_t b_pitch,
                               float alpha, float rBeta, int width, int height);
 
-// divergence.fs
-
 /**
  * @brief The Divergence Fragment Program
  *
@@ -78,10 +67,17 @@ __global__ void divergence_kernel(float *result, size_t result_pitch,
                                   float2 *w, size_t w_pitch,
                                   int width, int height);
 
-__global__ void apply_force_kernel(float2 *result, size_t result_pitch,
-                                   float2 *u, size_t u_pitch,
-                                   float radius, float2 point, float2 F,
+template <typename T>
+__global__ void apply_force_kernel(T *result, size_t result_pitch,
+                                   T *u, size_t u_pitch,
+                                   float radius, float2 point, T F,
                                    int width, int height);
+
+__global__ void gradient_kernel(float2 *result, size_t result_pitch,
+                                float halfrdx,
+                                float *p, size_t p_pitch,
+                                float2 *w, size_t w_pitch,
+                                int width, int height);
 
 __global__ void float3_to_uint8(uint8_t *result, int width, int height);
 

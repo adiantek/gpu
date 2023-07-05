@@ -25,41 +25,35 @@ __global__ void swap_velocity() {
     float2 *tmp_velocity = m_velocity[0];
     m_velocity[0] = m_velocity[1];
     m_velocity[1] = tmp_velocity;
-
     size_t tmp_velocity_pitch = m_velocity_pitch[0];
     m_velocity_pitch[0] = m_velocity_pitch[1];
     m_velocity_pitch[1] = tmp_velocity_pitch;
 }
-
-template <typename T>
-__global__ void boundary_advect_kernel(T *result, size_t result_pitch,
-                                       T *field, size_t field_pitch,
-                                       float scale, int width, int height) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (i >= width || j >= height) return;
-
-    int k = i;
-    int l = j;
-
-    if (k == 0) {  // left
-        k = 1;
-    }
-    if (k >= width - 1) {  // right
-        k = width - 2;
-    }
-    if (l == 0) {  // bottom
-        l = 1;
-    }
-    if (l >= height - 1) {  // top
-        l = height - 2;
-    }
-    if (k == i && l == j) {
-        scale = 1.0f;
-    }
-    result[j * result_pitch / sizeof(T) + i] = field[l * field_pitch / sizeof(T) + k] * scale;
+void swap_velocity_host() {
+    float2 *tmp_velocity = h_velocity[0];
+    h_velocity[0] = h_velocity[1];
+    h_velocity[1] = tmp_velocity;
+    size_t tmp_velocity_pitch = h_velocity_pitch[0];
+    h_velocity_pitch[0] = h_velocity_pitch[1];
+    h_velocity_pitch[1] = tmp_velocity_pitch;
 }
+__global__ void swap_dye() {
+    float3 *tmp_dye = m_dye[0];
+    m_dye[0] = m_dye[1];
+    m_dye[1] = tmp_dye;
+    size_t tmp_dye_pitch = m_dye_pitch[0];
+    m_dye_pitch[0] = m_dye_pitch[1];
+    m_dye_pitch[1] = tmp_dye_pitch;
+}
+void swap_dye_host() {
+    float3 *tmp_dye = h_dye[0];
+    h_dye[0] = h_dye[1];
+    h_dye[1] = tmp_dye;
+    size_t tmp_dye_pitch = h_dye_pitch[0];
+    h_dye_pitch[0] = h_dye_pitch[1];
+    h_dye_pitch[1] = tmp_dye_pitch;
+}
+
 
 /**
  * @brief Advection Fragment Program
@@ -75,7 +69,7 @@ __global__ void boundary_advect_kernel(T *result, size_t result_pitch,
  */
 template <typename T>
 __global__ void advect_kernel(T *result, size_t result_pitch,
-                              float timestep, float rdx,
+                              float dt, float dissipation,
                               T *x, size_t x_pitch,
                               float2 *u, size_t u_pitch,
                               int width, int height) {
@@ -83,11 +77,7 @@ __global__ void advect_kernel(T *result, size_t result_pitch,
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i >= width || j >= height) return;
-    if (i == 0 || j == 0 || i == width - 1 || j == height - 1) {
-        result[j * result_pitch / sizeof(T) + i] = x[j * x_pitch / sizeof(T) + i];
-        return;
-    }
-    float2 pos = make_float2(i, j) - timestep * rdx * u[j * u_pitch / sizeof(float2) + i];
+    float2 pos = make_float2(i, j) - dt * u[j * u_pitch / sizeof(float2) + i];
 
     float2 floorPos = floorf(pos);
     float2 fractPos = pos - floorPos;
@@ -99,7 +89,7 @@ __global__ void advect_kernel(T *result, size_t result_pitch,
         fractPos.x = 0;
     }
     if (iFloorPos.x >= width - 1) {
-        iFloorPos.x = width - 2;
+        iFloorPos.x = width - 1;
         fractPos.x = 1;
     }
     if (iFloorPos.y < 0) {
@@ -107,20 +97,20 @@ __global__ void advect_kernel(T *result, size_t result_pitch,
         fractPos.y = 0;
     }
     if (iFloorPos.y >= height - 1) {
-        iFloorPos.y = height - 2;
+        iFloorPos.y = height - 1;
         fractPos.y = 1;
     }
 
     T x00 = x[iFloorPos.y * x_pitch / sizeof(T) + iFloorPos.x];
-    T x01 = x[iFloorPos.y * x_pitch / sizeof(T) + iFloorPos.x + 1];
-    T x10 = x[(iFloorPos.y + 1) * x_pitch / sizeof(T) + iFloorPos.x];
-    T x11 = x[(iFloorPos.y + 1) * x_pitch / sizeof(T) + iFloorPos.x + 1];
+    T x01 = x[iFloorPos.y * x_pitch / sizeof(T) + min(iFloorPos.x + 1, width - 1)];
+    T x10 = x[min(iFloorPos.y + 1, height - 1) * x_pitch / sizeof(T) + iFloorPos.x];
+    T x11 = x[min(iFloorPos.y + 1, height - 1) * x_pitch / sizeof(T) + min(iFloorPos.x + 1, width - 1)];
 
     T x0 = x00 * (1 - fractPos.x) + x01 * fractPos.x;
     T x1 = x10 * (1 - fractPos.x) + x11 * fractPos.x;
     T res = x0 * (1 - fractPos.y) + x1 * fractPos.y;
 
-    result[j * result_pitch / sizeof(T) + i] = res;
+    result[j * result_pitch / sizeof(T) + i] = res / (1.0 + dt * dissipation);
 }
 
 /**
@@ -183,24 +173,28 @@ __global__ void divergence_kernel(float *result, size_t result_pitch,
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i >= width || j >= height) return;
-    if (i == 0 || j == 0 || i == width - 1 || j == height - 1) {
-        result[j * result_pitch / sizeof(float) + i] = w[j * w_pitch / sizeof(float2) + i].x;
-        return;
-    }
 
-    float wL = w[j * w_pitch / sizeof(float2) + i - 1].x;
-    float wR = w[j * w_pitch / sizeof(float2) + i + 1].x;
-    float wB = w[(j - 1) * w_pitch / sizeof(float2) + i].y;
-    float wT = w[(j + 1) * w_pitch / sizeof(float2) + i].y;
+    float2 C = w[j * w_pitch / sizeof(float2) + i];
+    
+    float wL = w[j * w_pitch / sizeof(float2) + max(i - 1, 0)].x;
+    float wR = w[j * w_pitch / sizeof(float2) + min(i + 1, width - 1)].x;
+    float wB = w[max(j - 1, 0) * w_pitch / sizeof(float2) + i].y;
+    float wT = w[min(j + 1, height - 1) * w_pitch / sizeof(float2) + i].y;
+
+    if (i == 0) wL = -C.x;
+    if (i == width - 1) wR = -C.x;
+    if (j == 0) wB = -C.y;
+    if (j == height - 1) wT = -C.y;
 
     float div = halfrdx * ((wR - wL) + (wT - wB));
 
     result[j * result_pitch / sizeof(float) + i] = div;
 }
 
-__global__ void apply_force_kernel(float2 *result, size_t result_pitch,
-                                   float2 *u, size_t u_pitch,
-                                   float radius, float2 point, float2 F,
+template <typename T>
+__global__ void apply_force_kernel(T *result, size_t result_pitch,
+                                   T *u, size_t u_pitch,
+                                   float radius, float2 point, T F,
                                    int width, int height) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -208,15 +202,37 @@ __global__ void apply_force_kernel(float2 *result, size_t result_pitch,
     if (i >= width || j >= height) return;
 
     if (i == 0 || j == 0 || i == width - 1 || j == height - 1) {
-        result[j * result_pitch / sizeof(float2) + i] = u[j * u_pitch / sizeof(float2) + i];
+        result[j * result_pitch / sizeof(T) + i] = u[j * u_pitch / sizeof(T) + i];
         return;
     }
 
-    float2 uv = u[j * u_pitch / sizeof(float2) + i];
+    T uv = u[j * u_pitch / sizeof(T) + i];
     float2 pos = make_float2(i, j);
     float dist = length(pos - point);
-    float2 v_xy = F * expf(-(dist * dist) / radius);
-    result[j * result_pitch / sizeof(float2) + i] = uv + v_xy;
+    T v_xy = F * expf(-(dist * dist) / radius);
+    result[j * result_pitch / sizeof(T) + i] = uv + v_xy;
+}
+
+
+__global__ void gradient_kernel(float2 *result, size_t result_pitch,
+                                float halfrdx,
+                                float *p, size_t p_pitch,
+                                float2 *w, size_t w_pitch,
+                                int width, int height) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= width || j >= height) return;
+
+    float pL = p[j * p_pitch / sizeof(float) + max(i - 1, 0)];
+    float pR = p[j * p_pitch / sizeof(float) + min(i + 1, width - 1)];
+    float pB = p[max(j - 1, 0) * p_pitch / sizeof(float) + i];
+    float pT = p[min(j + 1, height - 1) * p_pitch / sizeof(float) + i];
+
+    float2 uNew = w[j * w_pitch / sizeof(float2) + i];
+    uNew -= halfrdx * make_float2(pR - pL,  pT - pB);
+
+    result[j * result_pitch / sizeof(float2) + i] = uNew;
 }
 
 __global__ void float3_to_uint8(uint8_t *result, int width, int height) {
@@ -347,95 +363,43 @@ void setup_fluids(int width, int height) {
     free(m_texture_float);
 }
 
-void advect_velocity(Controller *controller, double timestep) {
-    int width = controller->width;
-    int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
-    // 0 -> 1
-    boundary_advect_kernel<float2><<<gridDim, blockDim>>>(
-        h_velocity[1], h_velocity_pitch[1],
-        h_velocity[0], h_velocity_pitch[0],
-        -1.0f, width, height);
-    // 1 -> 0
-    float rdx = 1.0f / width;
-    advect_kernel<float2><<<gridDim, blockDim>>>(
-        h_velocity[0], h_velocity_pitch[0],
-        timestep, rdx,
-        h_velocity[1], h_velocity_pitch[1],
-        h_velocity[1], h_velocity_pitch[1],
-        width, height);
-}
 
-void advect_dye(Controller *controller, double timestep) {
-    int width = controller->width;
-    int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
-    // 0 -> 1
-    boundary_advect_kernel<float3><<<gridDim, blockDim>>>(
-        h_dye[1], h_dye_pitch[1],
-        h_dye[0], h_dye_pitch[0],
-        0.0f, width, height);
-    // 1 -> 0
-    float rdx = 1.0f / (2.0f / width);
-    advect_kernel<float3><<<gridDim, blockDim>>>(
-        h_dye[0], h_dye_pitch[0],
-        timestep, rdx,
-        h_dye[1], h_dye_pitch[1],
-        h_velocity[0], h_velocity_pitch[0],
-        width, height);
-}
+
 
 void apply_force(Controller *controller) {
     int width = controller->width;
     int height = controller->height;
     dim3 gridDim((width + 31) / 32, (height + 31) / 32);
     dim3 blockDim(32, 32);
-    float radius = sqrtf(controller->deltaX * controller->deltaX + controller->deltaY * controller->deltaY);
-    apply_force_kernel<<<gridDim, blockDim>>>(
+
+    float dX = controller->deltaX * 10.0f;
+    float dY = controller->deltaY * 10.0f;
+
+    float radius = sqrtf(dX * dX + dY * dY);
+    if (radius < 1.0f) {
+        return;
+    }
+    apply_force_kernel<float2><<<gridDim, blockDim>>>(
         h_velocity[1], h_velocity_pitch[1],
         h_velocity[0], h_velocity_pitch[0],
         radius,
         make_float2(controller->mouseX, controller->mouseY),
-        make_float2(controller->deltaX, controller->deltaY),
+        make_float2(dX, dY),
         width, height);
 
-    float2 *tmp = h_velocity[0];
-    h_velocity[0] = h_velocity[1];
-    h_velocity[1] = tmp;
-
-    size_t tmp_pitch = h_velocity_pitch[0];
-    h_velocity_pitch[0] = h_velocity_pitch[1];
-    h_velocity_pitch[1] = tmp_pitch;
-
     swap_velocity<<<1, 1>>>();
-}
+    swap_velocity_host();
 
-void diffuse_velocity(Controller *controller, double timestep) {
-    int width = controller->width;
-    int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
-    const float m_viscosity = 0.0001f;
-    float alpha = (2.0f / width) * (2.0f / height) / (m_viscosity * timestep);
-    float rBeta = 1.0f / (4 + alpha);
-    for (int i = 0; i < 15; i++) {
-        // 0 -> 1
-        jacobi_kernel<float2><<<gridDim, blockDim>>>(
-            h_velocity[1], h_velocity_pitch[1],
-            h_velocity[0], h_velocity_pitch[0],
-            h_velocity[0], h_velocity_pitch[0],
-            alpha, rBeta,
-            width, height);
-        // 1 -> 0
-        jacobi_kernel<float2><<<gridDim, blockDim>>>(
-            h_velocity[0], h_velocity_pitch[0],
-            h_velocity[1], h_velocity_pitch[1],
-            h_velocity[1], h_velocity_pitch[1],
-            alpha, rBeta,
-            width, height);
-    }
+    // apply_force_kernel<float3><<<gridDim, blockDim>>>(
+    //     h_dye[1], h_dye_pitch[1],
+    //     h_dye[0], h_dye_pitch[0],
+    //     radius,
+    //     make_float2(controller->mouseX, controller->mouseY),
+    //     make_float3(1.0f, 1.0f, 1.0f),
+    //     width, height);
+
+    // swap_dye<<<1, 1>>>();
+    // swap_dye_host();
 }
 
 void divergence(Controller *controller) {
@@ -443,12 +407,45 @@ void divergence(Controller *controller) {
     int height = controller->height;
     dim3 gridDim((width + 31) / 32, (height + 31) / 32);
     dim3 blockDim(32, 32);
-    float halfrdx = 0.5f / (2.0f / width);
+    float halfrdx = 0.5f;
     divergence_kernel<<<gridDim, blockDim>>>(
         h_divergence, h_divergence_pitch,
         halfrdx,
         h_velocity[0], h_velocity_pitch[0],
         width, height);
+}
+
+void advect_velocity(Controller *controller, double timestep) {
+    int width = controller->width;
+    int height = controller->height;
+    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
+    dim3 blockDim(32, 32);
+    advect_kernel<float2><<<gridDim, blockDim>>>(
+        h_velocity[1], h_velocity_pitch[1],
+        timestep, 0.2f,
+        h_velocity[0], h_velocity_pitch[0],
+        h_velocity[0], h_velocity_pitch[0],
+        width, height);
+
+    swap_velocity<<<1, 1>>>();
+    swap_velocity_host();
+}
+
+void advect_dye(Controller *controller, double timestep) {
+    int width = controller->width;
+    int height = controller->height;
+    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
+    dim3 blockDim(32, 32);
+
+    advect_kernel<float3><<<gridDim, blockDim>>>(
+        h_dye[1], h_dye_pitch[1],
+        timestep, 0.0f,
+        h_dye[0], h_dye_pitch[0],
+        h_velocity[0], h_velocity_pitch[0],
+        width, height);
+
+    swap_dye<<<1, 1>>>();
+    swap_dye_host();
 }
 
 void computePressure(Controller *controller) {
@@ -458,60 +455,49 @@ void computePressure(Controller *controller) {
     dim3 blockDim(32, 32);
 
     cudaMemset2D(h_pressure[0], h_pressure_pitch[0], 0, width * sizeof(float), height);
-    cudaMemset2D(h_pressure[1], h_pressure_pitch[1], 0, width * sizeof(float), height);
 
-    for (int i = 0; i < 70; i++) {
-        boundary_advect_kernel<float><<<gridDim, blockDim>>>(
+    for (int i = 0; i < 5; i++) {
+        jacobi_kernel<float><<<gridDim, blockDim>>>(
             h_pressure[1], h_pressure_pitch[1],
             h_pressure[0], h_pressure_pitch[0],
-            1.0f, width, height);
-
+            h_divergence, h_divergence_pitch,
+            -1.0f, 0.25f,
+            width, height);
         jacobi_kernel<float><<<gridDim, blockDim>>>(
             h_pressure[0], h_pressure_pitch[0],
             h_pressure[1], h_pressure_pitch[1],
             h_divergence, h_divergence_pitch,
-            -(2.0f / width) * (2.0f / height), 0.25f,
+            -1.0f, 0.25f,
             width, height);
     }
 }
 
-void gradientSubtraction(Controller *controller) {
+void gradient(Controller *controller) {
     int width = controller->width;
     int height = controller->height;
     dim3 gridDim((width + 31) / 32, (height + 31) / 32);
     dim3 blockDim(32, 32);
 
-    boundary_advect_kernel<float2><<<gridDim, blockDim>>>(
+    gradient_kernel<<<gridDim, blockDim>>>(
         h_velocity[1], h_velocity_pitch[1],
+        1.0f,
+        h_pressure[0], h_pressure_pitch[0],
         h_velocity[0], h_velocity_pitch[0],
-        -1.0f, width, height);
-
-    float2 *tmp = h_velocity[0];
-    h_velocity[0] = h_velocity[1];
-    h_velocity[1] = tmp;
-
-    size_t tmp_pitch = h_velocity_pitch[0];
-    h_velocity_pitch[0] = h_velocity_pitch[1];
-    h_velocity_pitch[1] = tmp_pitch;
+        width, height);
 
     swap_velocity<<<1, 1>>>();
-
-    // TODO: subtract gradient
+    swap_velocity_host();
 }
 
 void update_fluids(Controller *controller, double timestep) {
-    timestep = 0.1;
-
-    advect_velocity(controller, timestep);
-    advect_dye(controller, timestep);
-
     if (controller->mouseButtons[GLFW_MOUSE_BUTTON_LEFT]) {
-        apply_force(controller);
+        apply_force(controller); // -> velocity
     }
 
-    diffuse_velocity(controller, timestep);
+    divergence(controller); // velocity -> divergence
+    computePressure(controller); // divergence -> pressure
+    gradient(controller); // velocity,pressure -> velocity
 
-    divergence(controller);
-    computePressure(controller);
-    gradientSubtraction(controller);
+    advect_velocity(controller, timestep); // velocity -> velocity
+    advect_dye(controller, timestep); // velocity,dye -> dye
 }
