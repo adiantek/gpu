@@ -241,7 +241,7 @@ __global__ void float3_to_uint8(uint8_t *result, int width, int height) {
 
     if (i >= width || j >= height) return;
 
-    float2 val_vel = m_velocity[0][j * m_velocity_pitch[0] / sizeof(float2) + i];
+    float2 val_vel = m_velocity[0][j * m_velocity_pitch[0] / sizeof(float2) + i] * 0.1f;
     float val_pressure = m_pressure[0][j * m_pressure_pitch[0] / sizeof(float) + i];
     float val_divergence = m_divergence[j * m_divergence_pitch / sizeof(float) + i];
     float3 val_dye = m_dye[0][j * m_dye_pitch[0] / sizeof(float3) + i];

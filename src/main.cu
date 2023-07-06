@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    GLFWwindow *window = glfwCreateWindow(1024, 1024, "Lubię trójkąty", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(1024, 1024, "Płyny wysokoprocentowe", NULL, NULL);
     if (!window) {
         LOGE("Failed to create window.");
         glfwTerminate();
