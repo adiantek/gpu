@@ -161,18 +161,43 @@ int main(int argc, char **argv) {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
+        int w = controller->width;
+        int h = controller->height;
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+        {
+            ImGui::Begin("Plyny");
+            ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+            ImGui::Checkbox("Paused", &controller->paused);
+            ImGui::SliderInt("Iterations", &controller->iterations, 1, 200);
+            ImGui::SliderFloat("Timer", &controller->timer, 0.0f, 5.0f);
+            ImGui::SliderFloat("Velocity decay", &controller->velocityDecay, 0.0f, 2.0f);
+            ImGui::SliderFloat("Dye decay", &controller->dyeDecay, 0.0f, 2.0f);
+            ImGui::SliderFloat("Dye color focus", &controller->dyeColor, 0.0f, 2.0f);
+            ImGui::SliderFloat("Radius", &controller->radius, 0.0f, 20.0f);
+            ImGui::SliderFloat("Divergence rdx", &controller->divergenceRdx, 0.0f, 1.0f);
+            ImGui::SliderFloat("Gradient rdx", &controller->gradientRdx, 0.0f, 1.0f);
+            ImGui::SliderAngle("Wind angle", &controller->windAngle, 0.0f, 360.0f);
+            ImGui::SliderFloat("Wind strength", &controller->windStrength, 0.0f, 100.0f);
+            if (ImGui::Button("Clear velocity")) {
+                cudaMemset2D(h_velocity[0], h_velocity_pitch[0], 0, w * sizeof(float2), h);
+            }
+            if (ImGui::Button("Clear dye")) {
+                cudaMemset2D(h_dye[0], h_dye_pitch[0], 0, w * sizeof(float3), h);
+            }
+            if (ImGui::Button("Load image")) {
+                load_image(w, h);
+            }
+            ImGui::End();
+        }
         // ImGui::ShowDemoWindow(&show_demo_window);
         ImGui::Render();
 
-        float hue = (float) (currTime / 10.0);
+        float hue = (float) (currTime / 5.0);
         hue = hue - floor(hue);
         controller->currentColor = hsv2rgb(hue, 1.0f, 1.0f);
-
-        int w = controller->width;
-        int h = controller->height;
 
         currTime = glfwGetTime();
         update_fluids(controller, currTime - prevTime);

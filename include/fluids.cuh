@@ -84,3 +84,4 @@ __global__ void float3_to_uint8(uint8_t *result, int width, int height);
 void free_fluids();
 void setup_fluids(int width, int height);
 void update_fluids(Controller *controller, double timestep);
+void load_image(int width, int height);

@@ -21,42 +21,38 @@ size_t h_divergence_pitch;
 float3 *h_dye[2];
 size_t h_dye_pitch[2];
 
+#define SWAP(x, y, T) do { T SWAP = x; x = y; y = SWAP; } while (0)
 __global__ void swap_velocity() {
-    float2 *tmp_velocity = m_velocity[0];
-    m_velocity[0] = m_velocity[1];
-    m_velocity[1] = tmp_velocity;
-    size_t tmp_velocity_pitch = m_velocity_pitch[0];
-    m_velocity_pitch[0] = m_velocity_pitch[1];
-    m_velocity_pitch[1] = tmp_velocity_pitch;
+    SWAP(m_velocity[0], m_velocity[1], float2 *);
+    SWAP(m_velocity_pitch[0], m_velocity_pitch[1], size_t);
 }
 void swap_velocity_host() {
-    float2 *tmp_velocity = h_velocity[0];
-    h_velocity[0] = h_velocity[1];
-    h_velocity[1] = tmp_velocity;
-    size_t tmp_velocity_pitch = h_velocity_pitch[0];
-    h_velocity_pitch[0] = h_velocity_pitch[1];
-    h_velocity_pitch[1] = tmp_velocity_pitch;
+    swap_velocity<<<1, 1>>>();
+    SWAP(h_velocity[0], h_velocity[1], float2 *);
+    SWAP(h_velocity_pitch[0], h_velocity_pitch[1], size_t);
 }
 __global__ void swap_dye() {
-    float3 *tmp_dye = m_dye[0];
-    m_dye[0] = m_dye[1];
-    m_dye[1] = tmp_dye;
-    size_t tmp_dye_pitch = m_dye_pitch[0];
-    m_dye_pitch[0] = m_dye_pitch[1];
-    m_dye_pitch[1] = tmp_dye_pitch;
+    SWAP(m_dye[0], m_dye[1], float3 *);
+    SWAP(m_dye_pitch[0], m_dye_pitch[1], size_t);
 }
 void swap_dye_host() {
-    float3 *tmp_dye = h_dye[0];
-    h_dye[0] = h_dye[1];
-    h_dye[1] = tmp_dye;
-    size_t tmp_dye_pitch = h_dye_pitch[0];
-    h_dye_pitch[0] = h_dye_pitch[1];
-    h_dye_pitch[1] = tmp_dye_pitch;
+    swap_dye<<<1, 1>>>();
+    SWAP(h_dye[0], h_dye[1], float3 *);
+    SWAP(h_dye_pitch[0], h_dye_pitch[1], size_t);
+}
+__global__ void swap_pressure() {
+    SWAP(m_pressure[0], m_pressure[1], float *);
+    SWAP(m_pressure_pitch[0], m_pressure_pitch[1], size_t);
+}
+void swap_pressure_host() {
+    swap_pressure<<<1, 1>>>();
+    SWAP(h_pressure[0], h_pressure[1], float *);
+    SWAP(h_pressure_pitch[0], h_pressure_pitch[1], size_t);
 }
 
 
 /**
- * @brief Advection Fragment Program
+ * @brief
  *
  * @param result result
  * @param timestep
@@ -213,6 +209,18 @@ __global__ void apply_force_kernel(T *result, size_t result_pitch,
     result[j * result_pitch / sizeof(T) + i] = uv + v_xy;
 }
 
+__global__ void apply_wind_kernel(
+    float2 *velocity, size_t velocity_pitch,
+    float2 direction, float strength,
+    int width, int height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= width || y >= height) {
+        return;
+    }
+    size_t idx = y * velocity_pitch / sizeof(float2) + x;
+    velocity[idx] += direction * strength;
+}
 
 __global__ void gradient_kernel(float2 *result, size_t result_pitch,
                                 float halfrdx,
@@ -342,7 +350,9 @@ void setup_fluids(int width, int height) {
     checkCudaErrors(cudaMemcpyToSymbol(m_divergence_pitch, &h_divergence_pitch, sizeof(h_divergence_pitch)));
     checkCudaErrors(cudaMemcpyToSymbol(m_dye, &h_dye, sizeof(h_dye)));
     checkCudaErrors(cudaMemcpyToSymbol(m_dye_pitch, &h_dye_pitch, sizeof(h_dye_pitch)));
+}
 
+void load_image(int width, int height) {
     size_t m_texture_size;
     uint8_t *m_texture = read_fully_file("winxp.raw", &m_texture_size);
     float3 *m_texture_float = (float3 *)malloc(h_dye_pitch[0] * height);
@@ -363,14 +373,14 @@ void setup_fluids(int width, int height) {
     free(m_texture_float);
 }
 
-void apply_force(Controller *controller) {
+void apply_force(Controller *controller, double timestep) {
     int width = controller->width;
     int height = controller->height;
     dim3 gridDim((width + 31) / 32, (height + 31) / 32);
     dim3 blockDim(32, 32);
 
-    float dX = controller->deltaX * 10.0f;
-    float dY = controller->deltaY * 10.0f;
+    float dX = controller->deltaX * controller->radius;
+    float dY = controller->deltaY * controller->radius;
 
     float radius = sqrtf(dX * dX + dY * dY);
     if (radius < 1.0f) {
@@ -384,22 +394,31 @@ void apply_force(Controller *controller) {
         make_float2(dX, dY),
         width, height);
 
-    swap_velocity<<<1, 1>>>();
     swap_velocity_host();
-
-    // float3 color = hsv2rgb(rand() * 1.0f / RAND_MAX, 1.0f, 1.0f) * 0.15f;
-    // printf("%f %f %f\n", color.x, color.y, color.z);
 
     apply_force_kernel<float3><<<gridDim, blockDim>>>(
         h_dye[1], h_dye_pitch[1],
         h_dye[0], h_dye_pitch[0],
         radius,
         make_float2(controller->mouseX, controller->mouseY),
-        controller->currentColor * 0.01f,
+        controller->currentColor * (float) timestep * controller->dyeColor,
         width, height);
 
-    swap_dye<<<1, 1>>>();
     swap_dye_host();
+}
+
+void apply_wind(Controller *controller, double timestep) {
+    float radians = controller->windAngle;
+    float2 direction = make_float2(cosf(radians), sinf(radians));
+    float strength = (float) timestep * controller->windStrength;
+    int width = controller->width;
+    int height = controller->height;
+    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
+    dim3 blockDim(32, 32);
+    apply_wind_kernel<<<gridDim, blockDim>>>(
+        h_velocity[0], h_velocity_pitch[0],
+        direction, strength,
+        width, height);
 }
 
 void divergence(Controller *controller) {
@@ -407,7 +426,7 @@ void divergence(Controller *controller) {
     int height = controller->height;
     dim3 gridDim((width + 31) / 32, (height + 31) / 32);
     dim3 blockDim(32, 32);
-    float halfrdx = 0.5f;
+    float halfrdx = controller->divergenceRdx;
     divergence_kernel<<<gridDim, blockDim>>>(
         h_divergence, h_divergence_pitch,
         halfrdx,
@@ -422,12 +441,11 @@ void advect_velocity(Controller *controller, double timestep) {
     dim3 blockDim(32, 32);
     advect_kernel<float2><<<gridDim, blockDim>>>(
         h_velocity[1], h_velocity_pitch[1],
-        timestep, 0.2f,
+        timestep, controller->velocityDecay,
         h_velocity[0], h_velocity_pitch[0],
         h_velocity[0], h_velocity_pitch[0],
         width, height);
 
-    swap_velocity<<<1, 1>>>();
     swap_velocity_host();
 }
 
@@ -439,12 +457,11 @@ void advect_dye(Controller *controller, double timestep) {
 
     advect_kernel<float3><<<gridDim, blockDim>>>(
         h_dye[1], h_dye_pitch[1],
-        timestep, 1.0f,
+        timestep, controller->dyeDecay,
         h_dye[0], h_dye_pitch[0],
         h_velocity[0], h_velocity_pitch[0],
         width, height);
 
-    swap_dye<<<1, 1>>>();
     swap_dye_host();
 }
 
@@ -456,19 +473,14 @@ void computePressure(Controller *controller) {
 
     cudaMemset2D(h_pressure[0], h_pressure_pitch[0], 0, width * sizeof(float), height);
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < controller->iterations; i++) {
         jacobi_kernel<float><<<gridDim, blockDim>>>(
             h_pressure[1], h_pressure_pitch[1],
             h_pressure[0], h_pressure_pitch[0],
             h_divergence, h_divergence_pitch,
             -1.0f, 0.25f,
             width, height);
-        jacobi_kernel<float><<<gridDim, blockDim>>>(
-            h_pressure[0], h_pressure_pitch[0],
-            h_pressure[1], h_pressure_pitch[1],
-            h_divergence, h_divergence_pitch,
-            -1.0f, 0.25f,
-            width, height);
+        swap_pressure_host();
     }
 }
 
@@ -480,24 +492,29 @@ void gradient(Controller *controller) {
 
     gradient_kernel<<<gridDim, blockDim>>>(
         h_velocity[1], h_velocity_pitch[1],
-        1.0f,
+        controller->gradientRdx,
         h_pressure[0], h_pressure_pitch[0],
         h_velocity[0], h_velocity_pitch[0],
         width, height);
 
-    swap_velocity<<<1, 1>>>();
     swap_velocity_host();
 }
 
 void update_fluids(Controller *controller, double timestep) {
+    timestep *= controller->timer;
+
     if (controller->mouseButtons[GLFW_MOUSE_BUTTON_LEFT]) {
-        apply_force(controller); // -> velocity
+        apply_force(controller, timestep); // -> velocity
     }
+    if (!controller->paused) {
+        if (controller->windStrength > 0.0f) {
+            apply_wind(controller, timestep);
+        }
+        divergence(controller); // velocity -> divergence
+        computePressure(controller); // divergence -> pressure
+        gradient(controller); // velocity,pressure -> velocity
 
-    divergence(controller); // velocity -> divergence
-    computePressure(controller); // divergence -> pressure
-    gradient(controller); // velocity,pressure -> velocity
-
-    advect_velocity(controller, timestep); // velocity -> velocity
-    advect_dye(controller, timestep); // velocity,dye -> dye
+        advect_velocity(controller, timestep); // velocity -> velocity
+        advect_dye(controller, timestep); // velocity,dye -> dye
+    }
 }

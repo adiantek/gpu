@@ -31,6 +31,17 @@ class Controller {
     static void onMouseButtonPress(GLFWwindow *window, int button, int action, int mode);
     static void onCursorPositionChange(GLFWwindow *window, double xPos, double yPos);
 
+    bool paused = false;
+    float velocityDecay = 0.2f;
+    float dyeDecay = 1.0f;
+    float timer = 1.0f;
+    float dyeColor = 1.0f;
+    float radius = 20.0f;
+    int iterations = 10;
+    float divergenceRdx = 0.5f;
+    float gradientRdx = 1.0f;
+    float windAngle = 0.0f;
+    float windStrength = 0.0f;
 };
 
 #ifdef __cplusplus
