@@ -363,9 +363,6 @@ void setup_fluids(int width, int height) {
     free(m_texture_float);
 }
 
-
-
-
 void apply_force(Controller *controller) {
     int width = controller->width;
     int height = controller->height;
@@ -390,16 +387,19 @@ void apply_force(Controller *controller) {
     swap_velocity<<<1, 1>>>();
     swap_velocity_host();
 
-    // apply_force_kernel<float3><<<gridDim, blockDim>>>(
-    //     h_dye[1], h_dye_pitch[1],
-    //     h_dye[0], h_dye_pitch[0],
-    //     radius,
-    //     make_float2(controller->mouseX, controller->mouseY),
-    //     make_float3(1.0f, 1.0f, 1.0f),
-    //     width, height);
+    // float3 color = hsv2rgb(rand() * 1.0f / RAND_MAX, 1.0f, 1.0f) * 0.15f;
+    // printf("%f %f %f\n", color.x, color.y, color.z);
 
-    // swap_dye<<<1, 1>>>();
-    // swap_dye_host();
+    apply_force_kernel<float3><<<gridDim, blockDim>>>(
+        h_dye[1], h_dye_pitch[1],
+        h_dye[0], h_dye_pitch[0],
+        radius,
+        make_float2(controller->mouseX, controller->mouseY),
+        controller->currentColor * 0.01f,
+        width, height);
+
+    swap_dye<<<1, 1>>>();
+    swap_dye_host();
 }
 
 void divergence(Controller *controller) {
@@ -439,7 +439,7 @@ void advect_dye(Controller *controller, double timestep) {
 
     advect_kernel<float3><<<gridDim, blockDim>>>(
         h_dye[1], h_dye_pitch[1],
-        timestep, 0.0f,
+        timestep, 1.0f,
         h_dye[0], h_dye_pitch[0],
         h_velocity[0], h_velocity_pitch[0],
         width, height);

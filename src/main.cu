@@ -84,6 +84,33 @@ __global__ void cudaDraw(uint8_t *ptr, int mouseX, int mouseY, int w, int h) {
     }
 }
 
+float3 hsv2rgb(float h, float s, float v) {
+	float r, g, b;
+	
+	int i = floor(h * 6);
+	float f = h * 6 - i;
+	float p = v * (1 - s);
+	float q = v * (1 - f * s);
+	float t = v * (1 - (1 - f) * s);
+	
+	switch (i % 6) {
+		case 0: r = v, g = t, b = p; break;
+		case 1: r = q, g = v, b = p; break;
+		case 2: r = p, g = v, b = t; break;
+		case 3: r = p, g = q, b = v; break;
+		case 4: r = t, g = p, b = v; break;
+		case 5: r = v, g = p, b = q; break;
+	}
+	
+	float3 color;
+	color.x = r * 255;
+	color.y = g * 255;
+	color.z = b * 255;
+	
+	return color;
+}
+
+
 int main(int argc, char **argv) {
     LOGI("Hello, world!");
     glfwSetErrorCallback(glfwErrorCallback);
@@ -139,6 +166,10 @@ int main(int argc, char **argv) {
         ImGui::NewFrame();
         // ImGui::ShowDemoWindow(&show_demo_window);
         ImGui::Render();
+
+        float hue = (float) (currTime / 10.0);
+        hue = hue - floor(hue);
+        controller->currentColor = hsv2rgb(hue, 1.0f, 1.0f);
 
         int w = controller->width;
         int h = controller->height;

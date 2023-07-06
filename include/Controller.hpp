@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <vector_types.h>
 
 class Controller {
    public:
@@ -17,6 +18,7 @@ class Controller {
     double deltaY;
     double mouseX;
     double mouseY;
+    float3 currentColor;
     
     bool keys[GLFW_KEY_LAST];
     bool mouseButtons[GLFW_MOUSE_BUTTON_LAST];
