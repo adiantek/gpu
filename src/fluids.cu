@@ -376,8 +376,8 @@ void load_image(int width, int height) {
 void apply_force(Controller *controller, double timestep) {
     int width = controller->width;
     int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
+    dim3 gridDim((width + GRID_SIZE - 1) / GRID_SIZE, (height + GRID_SIZE - 1) / GRID_SIZE);
+    dim3 blockDim(GRID_SIZE, GRID_SIZE);
 
     float dX = controller->deltaX * controller->radius;
     float dY = controller->deltaY * controller->radius;
@@ -408,13 +408,15 @@ void apply_force(Controller *controller, double timestep) {
 }
 
 void apply_wind(Controller *controller, double timestep) {
+    int width = controller->width;
+    int height = controller->height;
+    dim3 gridDim((width + GRID_SIZE - 1) / GRID_SIZE, (height + GRID_SIZE - 1) / GRID_SIZE);
+    dim3 blockDim(GRID_SIZE, GRID_SIZE);
+
     float radians = controller->windAngle;
     float2 direction = make_float2(cosf(radians), sinf(radians));
     float strength = (float) timestep * controller->windStrength;
-    int width = controller->width;
-    int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
+
     apply_wind_kernel<<<gridDim, blockDim>>>(
         h_velocity[0], h_velocity_pitch[0],
         direction, strength,
@@ -424,9 +426,11 @@ void apply_wind(Controller *controller, double timestep) {
 void divergence(Controller *controller) {
     int width = controller->width;
     int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
+    dim3 gridDim((width + GRID_SIZE - 1) / GRID_SIZE, (height + GRID_SIZE - 1) / GRID_SIZE);
+    dim3 blockDim(GRID_SIZE, GRID_SIZE);
+
     float halfrdx = controller->divergenceRdx;
+
     divergence_kernel<<<gridDim, blockDim>>>(
         h_divergence, h_divergence_pitch,
         halfrdx,
@@ -437,8 +441,9 @@ void divergence(Controller *controller) {
 void advect_velocity(Controller *controller, double timestep) {
     int width = controller->width;
     int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
+    dim3 gridDim((width + GRID_SIZE - 1) / GRID_SIZE, (height + GRID_SIZE - 1) / GRID_SIZE);
+    dim3 blockDim(GRID_SIZE, GRID_SIZE);
+
     advect_kernel<float2><<<gridDim, blockDim>>>(
         h_velocity[1], h_velocity_pitch[1],
         timestep, controller->velocityDecay,
@@ -452,8 +457,8 @@ void advect_velocity(Controller *controller, double timestep) {
 void advect_dye(Controller *controller, double timestep) {
     int width = controller->width;
     int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
+    dim3 gridDim((width + GRID_SIZE - 1) / GRID_SIZE, (height + GRID_SIZE - 1) / GRID_SIZE);
+    dim3 blockDim(GRID_SIZE, GRID_SIZE);
 
     advect_kernel<float3><<<gridDim, blockDim>>>(
         h_dye[1], h_dye_pitch[1],
@@ -468,8 +473,8 @@ void advect_dye(Controller *controller, double timestep) {
 void computePressure(Controller *controller) {
     int width = controller->width;
     int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
+    dim3 gridDim((width + GRID_SIZE - 1) / GRID_SIZE, (height + GRID_SIZE - 1) / GRID_SIZE);
+    dim3 blockDim(GRID_SIZE, GRID_SIZE);
 
     cudaMemset2D(h_pressure[0], h_pressure_pitch[0], 0, width * sizeof(float), height);
 
@@ -487,8 +492,8 @@ void computePressure(Controller *controller) {
 void gradient(Controller *controller) {
     int width = controller->width;
     int height = controller->height;
-    dim3 gridDim((width + 31) / 32, (height + 31) / 32);
-    dim3 blockDim(32, 32);
+    dim3 gridDim((width + GRID_SIZE - 1) / GRID_SIZE, (height + GRID_SIZE - 1) / GRID_SIZE);
+    dim3 blockDim(GRID_SIZE, GRID_SIZE);
 
     gradient_kernel<<<gridDim, blockDim>>>(
         h_velocity[1], h_velocity_pitch[1],

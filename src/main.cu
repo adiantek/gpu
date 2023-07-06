@@ -204,8 +204,8 @@ int main(int argc, char **argv) {
         prevTime = currTime;
 
         // cudaMemcpy(cudaResourcePtr, cudaClearPtr, 1280 * 720 * 4, cudaMemcpyDeviceToDevice);
-        dim3 gridDim((w + 31) / 32, (h + 31) / 32);
-        dim3 blockDim(32, 32);
+        dim3 gridDim((w + GRID_SIZE - 1) / GRID_SIZE, (h + GRID_SIZE - 1) / GRID_SIZE);
+        dim3 blockDim(GRID_SIZE, GRID_SIZE);
         float3_to_uint8<<<gridDim, blockDim>>>(cudaResourcePtr, w, h);
         if (controller->mouseButtons[GLFW_MOUSE_BUTTON_LEFT]) {
             // cudaDraw<<<gridDim, blockDim>>>(cudaResourcePtr, floor(controller->mouseX), floor(controller->mouseY), w, h);

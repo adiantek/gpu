@@ -7,6 +7,8 @@
 
 #include <Controller.hpp>
 
+#define GRID_SIZE 16
+
 extern float2 *h_velocity[2];
 extern size_t h_velocity_pitch[2];
 extern float *h_pressure[2];
